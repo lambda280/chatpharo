@@ -198,7 +198,7 @@ ChatPharoTool >> apiKey: anObject [
 ChatPharoTool >> applyToolFunction: functionName arguments: arguments [
 
 	| temporalTool |
-	onToolExecution ifNotNil: [ :blk | blk value ].
+	onToolExecution ifNotNil: [ :blk | blk cull: functionName ].
 	tools ifNil: [
 		"Check temporal tools before giving up"
 		temporalTool := ChatPharoTemporalToolRegistry current toolNamed: functionName.
