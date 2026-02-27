@@ -75,6 +75,14 @@ ChatPharoTool class >> claudeWithAPIKey: apiKey system: system [
 
 { #category : 'instance creation' }
 ChatPharoTool class >> claudeWithAPIKey: apiKey system: system tools: tools [
+	"Create a ChatPharoTool configured for the Anthropic Claude REST API.
+	 The Anthropic API requires 'x-api-key' header auth rather than the Bearer
+	 token used by OpenAI-compatible endpoints.  extraHeaders must be set BEFORE
+	 fetching model names, because the client builds its auth headers from
+	 extraHeaders (when present) or falls back to setBearerAuthentication: (which
+	 Anthropic rejects).  initializeWithBaseURL:apiKey:system:tools: attempts the
+	 model fetch during init with empty extraHeaders, so it silently falls back to
+	 an empty model string; we re-fetch here once the correct headers are in place."
 
 	| tool |
 	tool := self
@@ -86,6 +94,8 @@ ChatPharoTool class >> claudeWithAPIKey: apiKey system: system tools: tools [
 		at: 'x-api-key' put: apiKey;
 		at: 'anthropic-version' put: '2023-06-01';
 		yourself).
+	"Re-fetch model list now that x-api-key header is in place."
+	[ tool model: tool modelNames first ] on: Error do: [ :e | ].
 	^ tool
 ]
 
@@ -302,6 +312,10 @@ ChatPharoTool >> getResponseForHistory: history [
 
 { #category : 'initialization' }
 ChatPharoTool >> initializeWithBaseURL: initialBaseURL apiKey: initialAPIKey system: initialSystem tools: initialTools [
+	"Initialise instance variables. Model selection is deferred: factory methods that
+	 require custom auth headers (e.g. claudeWithAPIKey:system:tools:) set those headers
+	 AFTER this method returns and then call modelNames themselves, so we must not fetch
+	 the model list here — the headers would be missing and the request would fail."
 
 	super initialize.
 	baseURL := initialBaseURL.
@@ -310,7 +324,7 @@ ChatPharoTool >> initializeWithBaseURL: initialBaseURL apiKey: initialAPIKey sys
 	tools := initialTools.
 	onToolExecution := nil.
 	extraParameters := Dictionary new.
-	self model: self modelNames first
+	[ self model: self modelNames first ] on: Error do: [ :e | model := '' ]
 ]
 
 { #category : 'accessing' }
