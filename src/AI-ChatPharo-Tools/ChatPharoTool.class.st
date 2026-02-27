@@ -82,7 +82,9 @@ ChatPharoTool class >> claudeWithAPIKey: apiKey system: system tools: tools [
 	 extraHeaders (when present) or falls back to setBearerAuthentication: (which
 	 Anthropic rejects).  initializeWithBaseURL:apiKey:system:tools: attempts the
 	 model fetch during init with empty extraHeaders, so it silently falls back to
-	 an empty model string; we re-fetch here once the correct headers are in place."
+	 an empty model string; we re-fetch here once the correct headers are in place.
+	 max_tokens is required by the Anthropic API (both native and OpenAI-compatible
+	 endpoints); omitting it produces a 400 'field required' error at chat time."
 
 	| tool |
 	tool := self
@@ -96,6 +98,10 @@ ChatPharoTool class >> claudeWithAPIKey: apiKey system: system tools: tools [
 		yourself).
 	"Re-fetch model list now that x-api-key header is in place."
 	[ tool model: tool modelNames first ] on: Error do: [ :e | ].
+	"Anthropic requires max_tokens in every request; set a generous default."
+	tool requestParameters: (Dictionary new
+		at: 'max_tokens' put: 8096;
+		yourself).
 	^ tool
 ]
 
