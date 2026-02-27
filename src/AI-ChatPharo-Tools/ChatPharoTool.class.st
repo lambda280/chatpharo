@@ -273,6 +273,10 @@ ChatPharoTool >> getResponseForHistory: history [
 	extraParameters ifNotNil: [ data addAll: extraParameters ]. "Merge static tools with any temporal tools the model has created"
 	allTools := tools ifNil: [ OrderedCollection new ] ifNotNil: [ tools asOrderedCollection copy ].
 	allTools addAll: ChatPharoTemporalToolRegistry current tools.
+	"Deduplicate by name — some APIs (e.g. Anthropic) reject requests with duplicate tool names."
+	allTools := allTools inject: OrderedCollection new into: [ :unique :t |
+		(unique anySatisfy: [ :u | u name = t name ]) ifFalse: [ unique add: t ].
+		unique ].
 	allTools ifNotEmpty: [
 			data
 				add: 'tools' -> (allTools collect: [ :t | t openAIChatTool ] as: Array);
