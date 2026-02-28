@@ -27,9 +27,14 @@ Class {
 
 { #category : 'initialization' }
 ChatPharoMessagePresenter >> connectPresenters [
+	"Set the emoji-aware text styler on each presenter before assigning the
+	 document, so emoji characters are rendered via the Noto Emoji font."
 
+	contentPresenter textStyler: ChatPharoEmojiTextStyler new.
 	contentPresenter document: (Microdown parse: model content).
-thinkingPresenter document: (Microdown parse: model thinking).
+	thinkingPresenter textStyler: ChatPharoEmojiTextStyler new.
+	thinkingPresenter document: (Microdown parse: model thinking).
+	answerPresenter textStyler: ChatPharoEmojiTextStyler new.
 	answerPresenter document: (Microdown parse: model answer).
 	goodFeedbackButton action: [ model feedback: true ].
 	badFeedbackButton action: [ model feedback: false ]
