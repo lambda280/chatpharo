@@ -75,8 +75,12 @@ ChatPharoClaudeAgent >> configurationErrorMessage [
 
 { #category : 'accessing' }
 ChatPharoClaudeAgent >> getResponseForPrompt: userPrompt [
+	"Run the agentic loop and return the final ChatPharoHistorySaver result.
+	 Thinking text (tool-call summaries) from every intermediate iteration is
+	 accumulated and attached to the final result so the Thinking Details window
+	 has content even though the last response itself has no tool calls."
 
-	| api result max count |
+	| api result max count thinkingParts |
 	api := ChatPharoTool claudeWithAPIKey: apiKey system: self systemPrompt tools: self tools.
 	self onToolExecution ifNotNil: [ api onToolExecution: self onToolExecution ].
 	model ifNotEmpty: [ api model: model ].
@@ -85,13 +89,26 @@ ChatPharoClaudeAgent >> getResponseForPrompt: userPrompt [
 	result := api getResponseForHistory: self history.
 	self history addMessage: result.
 
+	thinkingParts := OrderedCollection new.
+	result thinking ifNotNil: [ :t | t isEmpty ifFalse: [ thinkingParts add: t ] ].
+
 	max := ChatPharoSettings default maximumIterations ifNil: [ 1 ].
 	count := 0.
 	[ result toolCalls notNil and: [ count < max ] ] whileTrue: [
-			result := api getResponseForHistory: self history.
-			self history addMessage: result.
-			count := count + 1 ].
-self response: result.
+		result := api getResponseForHistory: self history.
+		self history addMessage: result.
+		result thinking ifNotNil: [ :t | t isEmpty ifFalse: [ thinkingParts add: t ] ].
+		count := count + 1 ].
+
+	"Consolidate thinking from all iterations onto the final result so the UI
+	 can display the full tool-call trace in the Thinking Details window."
+	thinkingParts isEmpty ifFalse: [
+		result thinking: (String streamContents: [ :s |
+			thinkingParts doWithIndex: [ :part :i |
+				i > 1 ifTrue: [ s cr; nextPutAll: '---'; cr ].
+				s nextPutAll: part ] ]) ].
+
+	self response: result.
 	^ result
 ]
 

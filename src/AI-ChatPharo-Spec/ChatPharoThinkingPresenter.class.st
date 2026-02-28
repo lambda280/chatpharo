@@ -104,13 +104,18 @@ ChatPharoThinkingPresenter >> isFinished [
 { #category : 'initialization' }
 ChatPharoThinkingPresenter >> openThinkingDetails [
 	"Open a new window to display the detailed thinking content"
-	| detailPresenter |
-	
+	| detailPresenter content |
+
 	"Don't open if agent doesn't support thinking"
 	self shouldShowThinkingUI ifFalse: [ ^ self ].
-	
+
+	content := self thinkingContent.
+	content isEmpty ifTrue: [
+		UIManager default inform: 'No tool calls were made — thinking details are only available when the AI uses tools.'.
+		^ self ].
+
 	detailPresenter := ChatPharoThinkingDetailPresenter new.
-	detailPresenter thinkingContent: self thinkingContent.
+	detailPresenter thinkingContent: content.
 	detailPresenter open
 ]
 
