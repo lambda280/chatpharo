@@ -30,8 +30,11 @@
 
 ### Key Features
 
-- **Multi-Backend Support**: Compatible with Ollama (local), Google Gemini, and Mistral AI
+- **Multi-Backend Support**: Compatible with Ollama (local), Claude (Anthropic), Google Gemini, Mistral AI, DeepSeek, and LM Studio
 - **Function Calling**: LLMs can query packages, classes, methods, and execute code snippets
+- **Agentic Loop**: Automatic multi-turn tool execution until the model produces a final text response
+- **Thinking Details**: Tool-call traces from the agentic loop are surfaced in a dedicated "Thinking Details" window
+- **Emoji Rendering**: Emoji characters in AI responses are rendered using the Noto Emoji font via a custom Microdown text styler
 - **System Browser Integration**: Chat tabs embedded within the browser for contextual assistance
 - **Persistent Settings**: Configuration saved between sessions
 - **Tool Safety**: Configurable tool execution with iteration limits
@@ -289,7 +292,47 @@ agent := ChatPharoGeminiAgent new
     yourself.
 ```
 
-#### 3. ChatPharoMistralAgent (Mistral AI)
+#### 3. ChatPharoClaudeAgent (Anthropic Claude)
+
+**Location**: `src/AI-ChatPharo-Agent/ChatPharoClaudeAgent.class.st`
+
+**Configuration**:
+- **Host**: `api.anthropic.com`
+- **API Key**: User-provided (`x-api-key` header auth)
+- **Models**: Dynamically fetched via `/v1/models` (e.g., `claude-sonnet-4-20250514`)
+
+**Features**:
+- Anthropic-specific auth headers (`x-api-key`, `anthropic-version: 2023-06-01`)
+- `max_tokens` set to 8096 per request (required by Anthropic API)
+- `supportsThinkingContent` returns `true` — enables the Thinking Details button
+- Agentic loop accumulates tool-call summaries across all iterations and attaches them to the final result so the Thinking Details window always has content
+
+**Example**:
+```smalltalk
+agent := ChatPharoClaudeAgent new
+    apiKey: 'YOUR_API_KEY';
+    model: 'claude-sonnet-4-20250514';
+    yourself.
+```
+
+#### 4. ChatPharoDeepSeekAgent (DeepSeek)
+
+**Location**: `src/AI-ChatPharo-Agent/ChatPharoDeepSeekAgent.class.st`
+
+**Configuration**:
+- **Host**: `api.deepseek.com`
+- **API Key**: User-provided
+
+#### 5. ChatPharoLMStudioAgent (LM Studio)
+
+**Location**: `src/AI-ChatPharo-Agent/ChatPharoLMStudioAgent.class.st`
+
+**Configuration**:
+- **Host**: configurable (default: `localhost`)
+- **Port**: configurable (default: `1234`)
+- Targets locally-running LM Studio instance
+
+#### 6. ChatPharoMistralAgent (Mistral AI)
 
 **Location**: `src/AI-ChatPharo-Agent/ChatPharoMistralAgent.class.st`
 
@@ -299,7 +342,7 @@ agent := ChatPharoGeminiAgent new
 - **Host**: `api.mistral.ai`
 - **API Key**: User-provided
 
-#### 4. ChatPharoNullAgent (Placeholder)
+#### 7. ChatPharoNullAgent (Placeholder)
 
 **Location**: `src/AI-ChatPharo-Agent/ChatPharoNullAgent.class.st`
 
@@ -586,6 +629,38 @@ ChatPharoSettings  ─▶  ChatPharoSettingsPresenter ─▶ Tabbed Settings
 
 ---
 
+### Thinking UI: ChatPharoThinkingPresenter / ChatPharoThinkingDetailPresenter
+
+**Location**: `src/AI-ChatPharo-Spec/ChatPharoThinkingPresenter.class.st`
+**Location**: `src/AI-ChatPharo-Spec/ChatPharoThinkingDetailPresenter.class.st`
+
+While the agent is processing a prompt, `ChatPharoThinkingPresenter` is shown inline in the chat with an animated "Thinking…" label and elapsed-time display.  When the agent finishes, the elapsed time is frozen and a **Show Details** button becomes available (only for agents that return `supportsThinkingContent = true`, e.g., `ChatPharoClaudeAgent`).
+
+Clicking **Show Details** opens `ChatPharoThinkingDetailPresenter`, which renders the tool-call trace collected during the agentic loop.  If no tool calls were made (the model answered directly), an informative dialog is shown instead of opening an empty window.
+
+**Thinking content lifecycle**:
+1. `ChatPharoClaudeAgent >> getResponseForPrompt:` runs the agentic loop.
+2. Each iteration that contains tool calls produces a thinking summary via `ChatPharoTool >> getResponseForHistory:`.
+3. Summaries are accumulated across all iterations in `thinkingParts`.
+4. After the loop the combined text is set on the final `ChatPharoHistorySaver` result.
+5. `ChatPharoChatPresenter >> whenAnswerReceivedDo:` reads `message thinking` and forwards it to `ChatPharoThinkingPresenter >> thinkingContent:`.
+
+---
+
+### Emoji Rendering: ChatPharoEmojiTextStyler
+
+**Location**: `src/AI-ChatPharo-Spec/ChatPharoEmojiTextStyler.class.st`
+
+A `MicTextStyler` subclass that adds Noto Emoji font attributes to emoji Unicode code points during Microdown rich-text composition.
+
+- `ensureEmojiFont` lazily registers `NotoEmoji-Regular.ttf` from the Pharo image's `Fonts/` directory using `FreeTypeFontFileUpdator`.  Degrades gracefully when the font file is absent.
+- `isEmojiCodePoint:` covers Miscellaneous Technical (U+2300–27BF) and Emoticons/Emoji (U+1F300–1FAFF).
+- `postTextTreatment:` adds a `TextFontReference` attribute at every emoji character position so the glyph is drawn from Noto Emoji rather than as an empty box.
+
+`ChatPharoMessagePresenter >> connectPresenters` sets a fresh `ChatPharoEmojiTextStyler` on each of the three `MicrodownPresenter` instances (content, thinking, answer) **before** assigning their documents, so the styler is active on first compose.
+
+---
+
 ### Agent Settings Presenters
 
 Each agent provides a custom settings panel:
@@ -593,7 +668,10 @@ Each agent provides a custom settings panel:
 | Agent | Presenter | Configuration |
 |-------|-----------|---------------|
 | Ollama | `ChatPharoOllamaSettingsPresenter` | Host, port, model dropdown, temperature, model management |
+| Claude | `ChatPharoClaudeSettingsPresenter` | Host, API key (masked), model dropdown |
 | Gemini | `ChatPharoGeminiSettingsPresenter` | Host, API key (masked), model dropdown, temperature |
+| DeepSeek | `ChatPharoDeepSeekSettingsPresenter` | Host, API key, model dropdown |
+| LM Studio | `ChatPharoLMStudioSettingsPresenter` | Host, port, model dropdown |
 | Mistral | `ChatPharoMistralSettingsPresenter` | Host, API key, model dropdown |
 | Null | `ChatPharoNullSettingsPresenter` | Info label prompting configuration |
 
@@ -1262,13 +1340,19 @@ ChatPharoSettings default presenter open.  "Reconfigure"
 | `ChatPharoSettings` | AI-ChatPharo | Persistent configuration |
 | `ChatPharoLogger` | AI-ChatPharo | Activity logging |
 | `ChatPharoAgent` | AI-ChatPharo-Agent | Abstract LLM backend |
+| `ChatPharoClaudeAgent` | AI-ChatPharo-Agent | Anthropic Claude integration |
 | `ChatPharoOllamaAgent` | AI-ChatPharo-Agent | Ollama integration |
 | `ChatPharoGeminiAgent` | AI-ChatPharo-Agent | Google Gemini integration |
+| `ChatPharoDeepSeekAgent` | AI-ChatPharo-Agent | DeepSeek integration |
+| `ChatPharoLMStudioAgent` | AI-ChatPharo-Agent | LM Studio integration |
 | `ChatPharoMistralAgent` | AI-ChatPharo-Agent | Mistral AI integration (experimental) |
 | `ChatPharoNullAgent` | AI-ChatPharo-Agent | Placeholder agent |
 | `ChatPharoPresenter` | AI-ChatPharo-Spec | Main window UI |
 | `ChatPharoChatPresenter` | AI-ChatPharo-Spec | Chat tab UI |
-| `ChatPharoMessagePresenter` | AI-ChatPharo-Spec | Message rendering |
+| `ChatPharoMessagePresenter` | AI-ChatPharo-Spec | Message rendering with emoji support |
+| `ChatPharoEmojiTextStyler` | AI-ChatPharo-Spec | Noto Emoji font styler for Microdown |
+| `ChatPharoThinkingPresenter` | AI-ChatPharo-Spec | Animated thinking indicator with elapsed time |
+| `ChatPharoThinkingDetailPresenter` | AI-ChatPharo-Spec | Tool-call trace viewer (Thinking Details window) |
 | `ChatPharoSettingsPresenter` | AI-ChatPharo-Spec | Settings dialog |
 | `ChatPharoTool` | AI-ChatPharo-Tools | OpenAI-style REST client |
 | `ChatPharoClient` | AI-ChatPharo-Tools | Function/tool definition |
@@ -1308,6 +1392,6 @@ MIT License - See `LICENSE` file
 
 ---
 
-**Document Version**: 1.0  
-**Last Updated**: September 2025  
+**Document Version**: 1.1
+**Last Updated**: February 2026
 **Compatible with**: Pharo 13, Pharo 14
